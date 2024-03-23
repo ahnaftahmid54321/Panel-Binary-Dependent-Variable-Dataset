@@ -1,0 +1,536 @@
+---
+title: "Econ 104 Project 3"
+output: pdf_document
+date: "2023-12-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(AER)
+data("CreditCard")
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(corrplot)
+library(psych)
+library(polycor)
+library(margins)
+library(AER)
+library(AER)
+library(plm)
+library(stargazer)
+data("USSeatBelts")
+na.omit(USSeatBelts[,"seatbelt"])
+USSeatBelts[,"speed65"]<-ifelse(USSeatBelts[,"speed65"]=="no",0,1)
+USSeatBelts[,"alcohol"]<-ifelse(USSeatBelts[,"alcohol"]=="no",0,1)
+names(USSeatBelts)
+```
+
+
+Authors: Sia Phulambrikar, Ahnaf Tamid, Sofia Giorgi, Michael Sorooshian
+
+\subsection{(a) Briefly discuss the question you are trying to answer with your model.}
+
+The dataset shows US panel data from 1983-1997.
+Using USSeatBelts, we are trying to answer how the number of fatalities per million of traffic miles (fatalities) is affected by seatbelt usage rate (seatbelt), whether there is a 65 mile per hour speed limit (speed65), whether there is a maximum of 0.08 blood alcohol content (alcohol), the median per capita income (income), and mean age (age).
+USSeatBelts can be found in the AER library: https://cran.r-project.org/web/packages/AER/AER.pdf
+
+\subsection{(b) Provide a descriptive analysis of your variables. This should include relevant figures with comments including some graphical depiction of individual heterogeneity.}
+
+```{r}
+hist(USSeatBelts[,"fatalities"],prob=TRUE,col="lightblue",main="Histogram of Fatalities",
+     xlab="Fatalities per million of traffic miles")
+lines(density(USSeatBelts[,"fatalities"]),col="blue",lwd=2)
+```
+Here, we have a histogram of fatalities, which is almost normally distributed but with a slight skew to the right, as can be seen by its tail. 
+```{r}
+hist(USSeatBelts[,"seatbelt"],prob=TRUE,col="lightblue",main="Histogram of Seatbelts",
+     xlab="Seatbelt usage rate")
+```
+The histogram of seatbelt usage rate has a skew to the left.
+
+```{r}
+tail(USSeatBelts[,"seatbelt"])
+summary(USSeatBelts[,"speed65"])
+```
+
+```{r}
+hist(USSeatBelts[,"speed65"],prob=TRUE,col="lightblue",main="Histogram of Speed",
+     xlab="65 mile per hour speed limit")
+```
+The 65 mile per hour speed limit is binary as either a 1 (there is a 65mph speed limit) or 0 (no 65 mph speed limit). Therefore, the graph will innately not be normally distributed, but this histogram does show that there is about twice as much density for the value of 1.
+```{r}
+hist(USSeatBelts[,"alcohol"],prob=TRUE,col="lightblue",main="Histogram of Alcohol",
+     xlab="Maximum of 0.08 blood alcohol content (BAC)")
+```
+Similar to speed, the maximum of 0.08 BAC is a binary variable of either 1 (there is a maximum of 0.08 BAC) or 0 (there is not a maximum of 0.08 BAC). In this dataset, there is a disproportionate amount of density on 0.
+```{r}
+hist(USSeatBelts[,"income"],prob=TRUE,col="lightblue",main="Histogram of Income",
+     xlab="Median per capita income")
+lines(density(USSeatBelts[,"income"]),col="blue",lwd=2)
+```
+The median per capita income is skewed to the right and has large tails.
+```{r}
+hist(USSeatBelts[,"age"],prob=TRUE,col="lightblue",main="Histogram of Age",xlab="Mean age")
+lines(density(USSeatBelts[,"age"]),col="blue",lwd=2)
+```
+The mean age is roughly normally distributed but clearly skewed to the left.
+```{r}
+USSeatBelts_vars <- USSeatBelts[, c("fatalities", "seatbelt", "speed65","alcohol","income","age")]
+summary(USSeatBelts_vars)
+```
+Here is a summary of the variables, which are further explored in the boxplots below.
+```{r}
+boxplot(USSeatBelts[,"fatalities"], main = "Boxplot of Fatalities", col="lightblue")
+```
+Fatalities has a minimum of approximately 0.008, a median of 0.02, and a maximum of 0.05. The series of points beyond the third quartile further shows its skew to the right.
+```{r}
+boxplot(USSeatBelts[,"seatbelt"], main = "Boxplot of Seatbelts", col="lightblue")
+```
+Seatbelts has a denser tail, with a minimum of about 0.06, median of 0.55, and maximum of 0.87. Its "NA" values have been omitted.
+```{r}
+boxplot(USSeatBelts[,"speed65"], main = "Boxplot of Speed", col="lightblue")
+```
+The boxplot of speed is interesting, and it is shown that the median is 1 while the mean is 0.65. 
+```{r}
+boxplot(USSeatBelts[,"alcohol"], main = "Boxplot of Alcohol", col="lightblue")
+```
+The boxplot of alcohol is the opposite of the speed boxplot, and shows that the median is 0. The data summary states that the mean is 0.11-- much closer to 0 than 1.
+```{r}
+boxplot(USSeatBelts[,"income"], main = "Boxplot of Income", col="lightblue")
+```
+Income has a boxplot reminiscent of its right-skew. Its minimum is about 8,372, mean is 17,993, median is 17,624, and maximum is 35,863.
+```{r}
+boxplot(USSeatBelts[,"age"], main = "Boxplot of Age", col="lightblue")
+```
+Age has a minimum of 28, with mean and median of 35 and maximum of 39, showing that the ages shown in this dataset were not considerably varied.
+```{r}
+pairs(USSeatBelts[, c("fatalities", "seatbelt", "speed65","alcohol","income","age")],
+      main = "Scatter Plot Matrix for USSeatBelts")
+```
+Individual heterogeneity can be detected in this scatterplot matrix. Seatbelt and age, for instance, seem to separate into 2 distinct groups (an indicator of heterogeneity). The same thing can be found between fatalities and age, and income and age.
+```{r}
+matrix <- cor(USSeatBelts_vars)
+print(matrix)
+```
+This correlation matrix shows us that many of the variables are slightly negatively correlated. Only income and age have a slightly notable positive correlation (higher income is associated with higher age). Income and fatalities have the most significant correlation, which is negative-- meaning that higher income individuals had less fatalities.
+
+\subsection{c) Pooled Model}
+
+
+```{r}
+pdata <- pdata.frame(USSeatBelts, index = c("state", "year"))
+
+pooled_model <- plm(fatalities ~ seatbelt + speed65 + alcohol + income + age, 
+                    data =USSeatBelts, model = "pooling")
+crse<- coeftest(pooled_model, vcov=vcovHC(pooled_model,
+type="HC0",cluster="group"))
+stargazer(pooled_model, crse, column.labels = c("\\textit{Pooled}", "\\textit{Pooled(prse)}"),
+model.names = FALSE,type = "text")
+```
+
+From the Summary we see that with a one unit increase in seatbelt we see an increase in fatalities.
+Also we see that with a one unit increase in alcoholyes we see that there is an decrease in fatalities. 
+This suggests that there is possibly time-invariant individual characteristics and/or Heterogeneity in individual-specific effects. We will official check this once we do the F-test below.
+
+\subsubsection{Fixed Effects Model}
+
+\subsubsection{One Way Time Effects Model}
+
+```{r}
+pdata <- pdata.frame(USSeatBelts, index = c("state", "year"))
+
+fixed_effects_model.time <- plm(fatalities ~ seatbelt + speed65 + alcohol + income + age,
+                           data =USSeatBelts, model = "within", effect="time")
+
+summary(fixed_effects_model.time)
+```
+
+This model provides us with estimates that make us doubt it's fit. The estimates show that one unit increase in seat-belt will actually increase fatalities, while alcohol will not. The problem with this model is that it doesn't take into the factor the individual effects.
+
+
+\subsubsection{One Way Individual Effects Model}
+
+```{r}
+fixed_effects_model <- plm(fatalities ~ seatbelt + speed65 + alcohol + income + age,
+                           data =USSeatBelts, model = "within")
+
+summary(fixed_effects_model)
+```
+
+This model doesn't make the most sense. From interpreting the estimates we see that the effect of fatality is the same with someone going 65 mile per hour and its the same for someone that wears seatbelts. The reason for the difference is that the Fixed Effects model doesn't take the time-invariant variables into factor which could cause the biased and inconsistent estimates.
+
+
+\subsubsection{Ftest}
+
+```{r}
+pFtest(fixed_effects_model.time, pooled_model)
+```
+
+The F test for the timed fixed effects and pooled model, infers that 
+we should reject the $H_0$: Pooled model. So we should use the Oneway-time Fixed Effects model
+
+```{r}
+pFtest(fixed_effects_model, pooled_model)
+```
+
+From the F test we can conclude that we should reject the 
+$H_0$: Pooled model. So we should use the Oneway-Individual Fixed Effects model
+
+Since our model includes both the timed fixed effect and individual effect. We will use the 
+two way model.
+
+\subsubsection{Twoway Effects within Fixed effects}
+
+```{r}
+fixed_effects_model.twoway <- plm(fatalities ~ seatbelt + speed65 + alcohol + income + age,
+                           data =USSeatBelts, model = "within", effect = "twoway")
+
+summary(fixed_effects_model.twoway)
+```
+
+The model above differences across time and individuals.
+This is the best of the models but even then we see that speeding past 65 will decrease the likelihood of fatality more than wearing seatbelts will. This doens't make sense. We are going to model the Random Effects model and compare it with this model.
+
+\subsubsection{Random Effects Model}
+
+```{r}
+pdata <- pdata.frame(USSeatBelts, index = c("state", "year"))
+
+random_effects_model <- plm(fatalities ~ seatbelt + speed65 + alcohol + income + age, 
+                            data =USSeatBelts, model = "random",  effect="twoway")
+
+summary(random_effects_model)
+```
+
+The Random Effects model considers the time-invariant variables in the model and therefore we get more accurate results. From the interpretation of the estimates, we can tell that wearing seat-belt will best determinant of decreasing fatalities. Whereas the other estimates of the variables show that they are less likely to decrease the likelihood of fatalities. We will perform the Huasman Test to deterimine which model is best.
+
+
+\subsubsection{Perform diagnostic test}
+
+\subsubsection{Hausman Test (Fixed Effects Model vs Random Effects Model)}
+
+```{r}
+hausman_test <- phtest(fixed_effects_model, random_effects_model)
+print(hausman_test)
+```
+
+
+In Conclusion: 
+$H_0$: REM 
+$H_1$: FEM
+
+Our p-value = 1, comparing it the with the significance level of 0.05, we fail to reject the $H_0$: REM and conclude that Random Effects Model is the best model fit for this data. This most likely suggests that there are time-invariant unobserved factors that affect the depedent variable, which is fatality in our case. All in all, Random Effects model provides the best and most efficient for our data.
+
+
+\section{Q2 Binary Dependent Variables}
+
+\subsection{(a) Briefly discuss the question you are trying to answer.}
+
+We are trying to answer whether a person's credit card application will be accepted or rejected based on these 5 factors and they are: number of major derogatory reports(reports), their age(age), their income(income), whether they own a home or not(owner), and the number of dependents they have(dependents).
+
+card: is the dependent variable. It signifies whether the application for credit card was accepted or rejected
+
+owner: is an indicator variable. it signifies whether the applicant owns a home or not.
+
+reports: is a continuous variable. it signifies how many major derogatory reports is against the applicant
+
+age: is a continuous variable. it signifies the age of the owner plus twelfths of a year
+
+income: is a continuous variable. it signifies the yearly income( in USD 10,000) of the applicant.
+
+dependents: is a continuous variable. it signifies the number of dependents the applicant has.
+
+Source:
+
+The CreditCard dataset can be found in the AER package.
+Main Reference: Greene, W.H. (2003). Econometric Analysis, 5th edition. Upper Saddle River, NJ: Prentice Hall.
+
+This dataset consists of Cross-Section data on the credit history for a sample of applicants for a type of credit card.
+The data frame contains 1,319 observations on 12 variables.
+
+\subsection{(b) Descriptive Analysis of Variables}
+
+```{r}
+sum(is.na(CreditCard))
+summary(CreditCard) 
+```
+
+```{r}
+CreditCard_vars <- CreditCard[, c("card","reports","age","income","owner","dependents")]
+summary(CreditCard_vars)
+```
+
+
+\subsubsection{Histograms}
+
+
+```{r}
+
+status1 <- c("card")
+rejected <- c(296)
+accepted <- c(1023)
+
+tata <- data.frame(status1, rejected, accepted)
+
+tata %>%
+  gather(key="success", value = value, -status1) %>%
+  ggplot(aes(y = value, x= status1, fill=success)) +
+  geom_bar(position = "dodge", stat = "identity")
+```
+
+The data shows that most credit card application from the sample of applicants were accepted. 
+
+
+```{r}
+
+status2 <- c("owner")
+not_homeowner <- c(738)
+homeowner <- c(581)
+
+tata2 <- data.frame(status2, not_homeowner, homeowner)
+
+tata2 %>%
+  gather(key="success", value = value, -status2) %>%
+  ggplot(aes(y = value, x= status2, fill=success)) +
+  geom_bar(position = "dodge", stat = "identity")
+```
+
+This shows that there's a higher percentage of applicants that do not own a home. From this we can sort of deduce that homeownership doesn't play a large part on whether a credit card application will be accepted or not because it is almost a split between the pool of applicants on whether they own a home or not, and we see that most creditcard applications are accepted.
+
+
+
+```{r}
+hist(CreditCard[,"reports"], prob = TRUE, col="lightblue", main = "Histogram of reports",
+     xlab = "reports")
+lines(density(CreditCard[,"reports"]), col = "blue", lwd=2)
+```
+
+The number of major derogatory reports were very much skewed right. From this histogram we can slightly intuitively infer that the amount of reports affects whether application for creditcard is accepted or not, since both variables are at the extreme end of each other.
+
+
+```{r, echo=TRUE}
+hist(CreditCard[,"age"], prob = TRUE, col="lightblue", main = "Histogram of age",
+     xlab = "age")
+lines(density(CreditCard[,"age"]), col = "blue", lwd=2)
+```
+
+The histogram closely resembles a bell curve. The age of the applicants were around the age of 30. The oldest of the applicants were around their 80's. 
+
+
+```{r}
+hist(CreditCard[,"income"], prob = TRUE, col="lightblue", main = "Histogram of income",
+     xlab = "income")
+lines(density(CreditCard[,"income"]), col = "blue", lwd=2)
+```
+
+The histogram looks to be skewed right, because we have outliers that make a lot more than the average group of people. The yearly income of the applicants were around 20,000 dollar to 30,000. The outliers make about 100,000 per year.
+
+
+```{r,}
+hist(CreditCard[,"dependents"], prob = TRUE, col="lightblue", main = "Histogram of dependents",
+     xlab = "")
+lines(density(CreditCard[,"dependents"]), col = "blue", lwd=2)
+```
+
+The histogram is skewed right. Dependents usually means children so it makes sense it is skewed left. Most people don't tend to have more than 1 or 2 children. The max amount of dependents were 6 which is the outlier. 
+
+\subsubsection{Boxplots}
+
+```{r}
+boxplot(CreditCard[,"card"], main = "Boxplot of card", col="lightblue")
+```
+
+The totally squeezed boxplot suggests that the IQR and whiskers are very short. It means there is very low variability, since the data is highly concentrated in a narrow range. This suggests that most creditcard application are accepted.It suggests a negatively skewed distribution.
+
+```{r}
+boxplot(CreditCard[,"owner"], main = "Boxplot of owner", col="lightblue")
+```
+
+The box plot shows that the IQR is very large, which suggests there is a good amount of spread and variability. The median is in the extreme end, which suggests that the distribution is positively skewed.
+
+
+```{r}
+boxplot(CreditCard[,"reports"], main = "Boxplot of reports", col="lightblue")
+```
+
+The totally squeezed boxplot suggests that the IQR and whiskers are very short. It means there is very low variability, since the data is highly concentrated in a narrow range. This suggests that the number of major derogatory reports are very low. The median is towards the bottom extreme which suggests a positively skewed distribution.
+
+
+```{r}
+boxplot(CreditCard[,"age"], main = "Boxplot of age", col="lightblue")
+```
+
+The IQR/the box is around the range of 20 to 40 with the median being around 30, this suggests that there is low variability among age. There whisker is longer on the upper end which means there are outliers that are older in age.
+
+
+
+```{r}
+boxplot(CreditCard[,"income"], main = "Boxplot of income", col="lightblue")
+```
+
+The IQR is pretty narrow which falls between the 20,000 to 40,000 range, this suggests there is low variability. There are potential outliers starting from the 60,000 to 100,000 range. The whiskers range from 0 to 60,000.
+
+
+```{r}
+boxplot(CreditCard[,"dependents"], main = "Boxplot of dependents", col="lightblue")
+```
+
+The IQR ranges from 0 to 2 dependents, while the median is set around 1 dependents. This means there is low variability among the dependents. The whisker ranges up to 5. There is a potential outlier at 6 dependents.
+
+
+```{r}
+par(mfrow = c(2, 2))
+boxplot(reports ~ card, data = CreditCard, main = "Boxplot of Reports by Card",
+        col = c("skyblue", "salmon"))
+boxplot(age ~ card, data = CreditCard, main = "Boxplot of Age by Card", 
+        col = c("skyblue", "salmon"))
+boxplot(income ~ card, data = CreditCard, main = "Boxplot of Income by Card",
+        col = c("skyblue", "salmon"))
+boxplot(dependents ~ card, data = CreditCard, main = "Boxplot of Dependents by Card",
+        col = c("skyblue", "salmon"))
+boxplot(owner ~ card, data = CreditCard, main = "Boxplot of Owner by Card", 
+        col = c("skyblue", "salmon"))
+```
+
+For Boxplot of Reports by Card
+
+We see that the median of application being accepted when the the number of report is close to 0. The IQR is very narrow but still towards the bottom of the range. This suggests that the likelihood of the card being rejected increases as the number of reports increases.
+
+For the Boxplot of Age by Card
+
+We see that the correlation between Age and whether the credit card application is not very closely related. The IQR is around the same age so is the median for both situation where the application is accepted or rejected.
+
+For the Boxplot of Income by Card
+
+The relation between Income and whether application is accepted is slightly related. We see that the IQR and median for the accepted application is a bit higher as income increases and the IQR and median is slightly lower as the income decreases. We also see that the outliers for the accepted application is much higher with outlier of income. Which means higher income increases the likelihood of the application being accepted. The reason for the outliers is that the data is not extensive enough to include people with higher income applicants, if we had enough data on higher income individuals we would see that the application being accepted greatly increases with the increase in income.
+
+For the Boxplot of Dependents by Card
+
+We can see that the median for the application being accepted is toward the bottom which suggests that lower amount of dependents increases the likelihood of the application being accepted. The IQR range is the same for both meaning the variability of whether the application is accepted or not based on dependents is around the same. The median for the application being rejected is slightly higher, which slightly suggests that as the number of dependents increase so the likelihood of the application being rejected.
+
+For the Boxplot of Owner by Card
+
+The IQR is both very large and around the same. Which means there is large variability. The median is both towards the bottom end, this suggests that the ownership of home might not seriously affect whether your application is rejected or accepted.
+
+
+```{r}
+CreditCard_vars_numeric <- as.data.frame(lapply(CreditCard_vars, as.numeric))
+matrix <- cor(CreditCard_vars_numeric)
+print(matrix)
+
+corrplot(matrix)
+```
+
+
+The Correlation plot shows which factors can affect whether the application is accepted or rejected. 
+We can rank them based on how much they affect the application.
+
+1) Reports: This is negatively correlated, since the number of reports increases the likelihood application getting rejected also increases
+
+2) Owner: This is positively correlated, the chances of application getting accepted is higher if the applicant owns a home.
+
+3) Income: This is slightly positively correlated. As the income of the individual increases so does the likelihood of the application being accepted.
+
+4) dependents : This is slightly negatively correlated. The higher number the number of dependents an applicant has, the slightly lower chance they will have of getting their application getting accepted.
+
+5) Age: is barely positively correlated. The older the applicant the likelihood of application being accepted.
+
+Note: The data mostly consists of applicants in their 30's, and that already increases the chances of application being accepted due to the likelihood that people around that age have higher income and more likely to own a home. The data doesn't have much data on applicants that are much younger around the age of 18-20.
+
+
+\subsubsection{Scatterplots}
+
+
+```{r}
+ggplot(CreditCard, aes(x = reports, y = card)) +
+  geom_point(aes(color = as.factor(card))) +
+  labs(title = "Scatterplot of Reports affecting CreditCard application", 
+       x = "Reports", y = "Card Application Accepted")
+```
+
+The scatterplot shows that after a certain amount of major derogatory reports the likelyhood of the application getting rejected increases by a lot.
+
+
+```{r}
+ggplot(CreditCard, aes(x = age, y = card)) +
+  geom_point(aes(color = as.factor(card))) +
+  labs(title = "Scatterplot of Age affecting CreditCard application", 
+       x = "age", y = "Card Application Accepted")
+```
+
+The scatterplot shows that age doesn't really play much of factor on whether the application will be accepted or not. Although we do see that the oulier age of 80 and applicants application was accepted. 
+
+
+```{r}
+ggplot(CreditCard, aes(x = income, y = card)) +
+  geom_point(aes(color = as.factor(card))) +
+  labs(title = "Scatterplot of Income affecting CreditCard application", 
+       x = "income", y = "Card Application Accepted")
+```
+
+The Scatter plot shows that as income increases the likelihood of application being accepted also increases. We also see that from the income of 20,000 to 50,000 the application process isn't affected much.
+
+
+```{r}
+ggplot(CreditCard, aes(x = owner, y = card)) +
+  geom_point(aes(color = as.factor(card))) +
+  labs(title = "Scatterplot of Houseownership affecting CreditCard application", 
+       x = "owner", y = "Card Application Accepted")
+```
+
+The scatterplot isn't a great representation of whether owning a house will affect the application process.Although we can infer that owning a home isn't necessary for credit card application to be accepted. From the scatterplot it seems like it won't affect it as much, but that is not what we see from the correlation matrix.
+
+
+```{r}
+ggplot(CreditCard, aes(x = dependents, y = card)) +
+  geom_point(aes(color = as.factor(card))) +
+  labs(title = "Scatterplot of number of dependents affecting CreditCard application", 
+       x = "dependents", y = "Card Application Accepted")
+```
+
+The scatterplot shows that there is still possibility of application being accepted if the numnber of dependents are very high.
+
+
+\subsection{c) Fit the three models below, and identify which model is your preferred one and why. Make sure to include statistical diagnostics to support your conclusion, and to comment on your findings.}
+
+\subsubsection{Linear Probability Model}
+
+First, we run a Linear Probability model. We can find the marginal effects using the command `margins(lpm)`.
+```{r}
+df <- CreditCard_vars
+df$cardnum <- as.numeric(df$card) - 1
+lpm <- lm(cardnum ~ reports + age + income + owner + dependents, data = df)
+coeftest(lpm, vcov = hccm(lpm,type="hc1"))
+margins(lpm)
+```
+
+\subsubsection{Probit Model}
+
+Next, we run a Probit model. We can find the marginal effects using the command `margins(mod.probit)`.
+```{r, warning=FALSE}
+mod.probit <- glm(cardnum ~ reports + age + income + owner + dependents, data = df,
+                  family=binomial(link="probit"))
+margins(mod.probit)
+```
+
+\subsubsection{Logit Model}
+
+Finally, we run a Logit model. We can find the marginal effects using the command `margins(mod.logit)`.
+```{r}
+mod.logit <- glm(cardnum ~ reports + age + income + owner + dependents, data = df,
+                 family=binomial(link="logit"))
+margins(mod.logit)
+```
+
+\subsubsection{Evaluating the models}
+
+We can evaluate models using AIC and BIC criteria, and select the model specification that results in the lowest AIC/BIC. 
+
+```{r}
+AIC(lpm, mod.probit, mod.logit)
+BIC(lpm, mod.probit, mod.logit)
+```
+
+The lowest AIC and BIC is given by the Logit Model. Thus, we prefer the logit model in explaining the credit card probability.
+
